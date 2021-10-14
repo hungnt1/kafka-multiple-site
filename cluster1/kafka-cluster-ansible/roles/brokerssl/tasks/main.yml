@@ -1,0 +1,111 @@
+---
+
+- name: generate client folders
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+  with_items:
+    - "{{ ssl_public_ca_dir }}"
+    - "{{ ssl_public_client_dir }}"
+  #when: secure|bool
+
+- name: generate keystores
+  become: true
+  shell: "keytool -keystore {{ item.keystore }} -alias localhost -validity {{ validity }} -genkey -storepass {{ keystore_pwd }} -keypass {{ key_pwd }} -keyalg RSA -dname \"CN=hn01.central.kafka,OU=CXVIEW,O=org,L=HN,ST=HaNOi,C=VI\" -ext SAN={{ DNSnamePublic }}"
+  args:
+    creates: "{{ item.keystore }}"
+  with_items:
+    - { keystore: /usr/local/public-broker.keystore.jks }
+    - { keystore: "{{ ssl_public_ca_dir }}/public-client.keystore.jks" }
+  when:  inventory_hostname in groups['securenode']
+  #when: secure|bool
+
+- name: create CA
+  become: true
+  shell: "openssl req -new -x509 -keyout {{ ssl_public_client_dir }}/ca-key -out {{ ssl_public_client_dir }}/ca-cert -passout pass:{{ ca_pwd }} -days {{ validity }} -subj \"/C=VI/ST=HaNoi/L=HN/O=org/OU=CXVIEW/CN=hn01.central.kafka\""
+  args:
+    creates: "{{ ssl_public_client_dir }}/ca-cert"
+    #creates: "{{ ssl_public_client_dir }}/ca-key"
+  # run_once: true
+  when:  inventory_hostname in groups['securenode']
+  #when: secure|bool
+
+- name: import CA into truststores
+  become: true
+  java_cert:
+    cert_path: "{{ ssl_public_client_dir }}/ca-cert"
+    cert_alias: CARoot
+    keystore_path: "{{ item }}"
+    keystore_pass: "{{ truststore_pwd }}"
+    keystore_create: true
+    state: present
+  with_items:
+   - "/usr/local/public-broker.truststore.jks"
+   - "{{ ssl_public_ca_dir }}/public-client.truststore.jks"
+  when:  inventory_hostname in groups['securenode']
+  #when: secure|bool
+
+- name: create CSR
+  become: true
+  shell: "keytool -keystore {{ item.keystore }} -alias localhost -certreq -file {{ item.cert_csr }} -storepass {{ keystore_pwd }} -keypass {{ key_pwd }} -ext SAN={{ DNSnamePublic }}"
+  args:
+    creates: "{{ item.cert_csr }}"
+  with_items:
+    - { keystore: "/usr/local/public-broker.keystore.jks", cert_csr: "/tmp/cert-csr" }
+    - { keystore: "{{ ssl_public_ca_dir }}/public-client.keystore.jks", cert_csr: "{{ ssl_public_ca_dir }}/cert-csr" }
+  when:  inventory_hostname in groups['securenode']
+  #when: secure|bool
+
+- name: create SAN conf for signing
+  lineinfile:
+    create: yes
+    path: /tmp/san.conf
+    line: 'subjectAltName={{ DNSnamePublic }}'
+    state: present
+  when:  inventory_hostname in groups['securenode']
+  #when: secure|bool
+
+- name: sign certificates
+  become: true
+  shell: "openssl x509 -req -CAkey {{ ssl_public_client_dir }}/ca-key -CA {{ ssl_public_client_dir }}/ca-cert -days {{ validity }} -CAcreateserial -in {{ item.cert_csr }} -passin pass:{{ ca_pwd }} -out {{ item.cert_file_signed }} -extfile /tmp/san.conf"
+  args:
+    creates: "{{ item.cert_file_signed }}"
+  with_items:
+    - { cert_csr: /tmp/cert-csr, cert_file_signed: /tmp/cert-signed}
+    - { cert_csr: "{{ ssl_public_ca_dir }}/cert-csr" , cert_file_signed: "{{ ssl_public_ca_dir }}/cert-signed" }
+  register: signed
+  when:  inventory_hostname in groups['securenode']
+  #when: secure|bool
+
+- name: import signed certificates into keystores
+  become: true
+  shell: "keytool -keystore {{ item.keystore }} -alias {{ item.alias }} -import -file {{ item.path }} -noprompt -storepass {{ keystore_pwd }} -keypass {{ key_pwd }}"
+  with_items:
+   - { alias: CARoot, path: "{{ ssl_public_client_dir }}/ca-cert", keystore: "/usr/local/public-broker.keystore.jks" }
+   - { alias: localhost, path: "/tmp/cert-signed", keystore:  "/usr/local/public-broker.keystore.jks" }
+   - { alias: CARoot, path: "{{ ssl_public_client_dir }}/ca-cert", keystore: "{{ ssl_public_ca_dir }}/public-client.keystore.jks" }
+   - { alias: localhost, path: "{{ ssl_public_ca_dir }}/cert-signed", keystore:  "{{ ssl_public_ca_dir }}/public-client.keystore.jks" }
+  #when: secure|bool and signed.changed
+  when:  inventory_hostname in groups['securenode']
+  ignore_errors: true #client store already done with first host
+
+
+- name: Copy public-broker keystore to other host
+  become: true
+  synchronize:
+    src: /usr/local/public-broker.keystore.jks
+    dest: /usr/local/public-broker.keystore.jks
+  delegate_to: zookeeper01
+
+
+- name: Copy public-broker keystore to other host
+  become: true
+  synchronize:
+    src: /usr/local/public-broker.truststore.jks
+    dest: /usr/local/public-broker.truststore.jks
+  delegate_to: zookeeper01
+
+
+
+

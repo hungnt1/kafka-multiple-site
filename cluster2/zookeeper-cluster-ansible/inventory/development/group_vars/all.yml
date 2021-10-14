@@ -1,0 +1,55 @@
+---
+
+systemUpgradeRequired: false
+
+javaVersion: 8
+updateJava: false # only when you need to update java version
+
+useSystemFirewall: true
+
+DNSname: "DNS:zookeeper01.site2,DNS:zookeeper02.site2,DNS:zookeeper02.site2"
+# DNSnamePublic: "kafka.message.iview.vn"
+# SecureCA: "192.168.50.190"
+
+zookeeperGroup: zookeeper
+zookeeperUser: zookeeper
+zookeeperGroupId: 6000
+zookeeperUserId: 6000
+
+zookeeperInstallDir: /zookeeper
+zookeeperDataDir: "{{ zookeeperInstallDir }}/zookeeper-data"
+zookeeperLogDir: "{{ zookeeperInstallDir }}/zookeeper-logs"
+
+zookeeperVmMaxMapCount: 100000
+zookeeperXms: 256m
+zookeeperXmx: "{{ zookeeperXms }}"
+zookeeperTickTime: 2000
+zookeeperInitLimit: 5
+zookeeperSyncLimit: 2
+zookeeperMaxClientCnxns: 1000
+zookeeperClientPort: "{{ zookeepersecureClientPort}}"
+zookeepersecureClientPort: 2182
+
+zookeeperVersion: 3.6.3
+zookeeperOldVersion: 3.5.5 # only used in removing old versions
+
+# use local tar only
+zookeeperTarLocation: "/home/hungnt1/apache-zookeeper-{{ zookeeperVersion }}-bin.tar.gz"
+
+# splunk monitoring
+zookeeperEnvironment: development
+
+# Only for AWS Based Cluster
+aws_zookeeper_ec2_region: "eu-central-1"
+aws_zookeeper_ebs_device: /dev/xvdc
+aws_zookeeper_ebs_device_fs: xfs
+aws_zookeeper_ebs_device_mount_location: /zookeeper
+
+secure: true
+ssl_ca_dir: "/usr/local/kafka/exchange/ssl-ca"
+ssl_exchange: "/usr/local/kafka/exchange/ssl-exchange"
+ssl_client_dir: "/usr/local/kafka/exchange/ssl-client-dir"
+keystore_pwd: keystore-secretanh99em2400379
+key_pwd: "{{ keystore_pwd }}"
+truststore_pwd: truststore-secretanh99em2400379
+ca_pwd: ca-secretanh99em2400379
